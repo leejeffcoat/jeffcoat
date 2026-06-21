@@ -1,0 +1,21 @@
+# working data — your actual family tree lives here, never commit it
+data/
+*.db
+*.db-journal
+*.ged
+
+# local config with API keys
+config.toml
+.env
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# os
+.DS_Store
+Thumbs.db

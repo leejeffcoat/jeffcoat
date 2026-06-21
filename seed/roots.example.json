@@ -1,0 +1,17 @@
+{
+  "_about": "Example seed showing the format. Copy to data/seed-<name>.json and edit. Refs are your own labels; they map to GEDCOM ids on load.",
+  "persons": [
+    {"ref": "me",     "given": "Jane",  "surname": "Doe", "sex": "F", "notes": "self"},
+    {"ref": "dad",    "given": "John",  "surname": "Doe", "sex": "M"},
+    {"ref": "mom",    "given": "Mary",  "surname": "Smith", "sex": "F", "notes": "born Smith, married surname Doe"},
+    {"ref": "grandpa","given": "Robert","surname": "Doe", "sex": "M"}
+  ],
+  "families": [
+    {"husband": "grandpa", "wife": null, "children": ["dad"]},
+    {"husband": "dad", "wife": "mom", "children": ["me"]}
+  ],
+  "events": [
+    {"person": "grandpa", "type": "BIRT", "date": "ABT 1920", "place": "Lexington County, South Carolina, USA"},
+    {"person": "grandpa", "type": "RESI", "place": "South Carolina, USA"}
+  ]
+}

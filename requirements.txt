@@ -1,0 +1,7 @@
+# Core needs nothing beyond the Python 3.11+ standard library.
+# These are only needed by specific scraper collectors.
+
+# FindAGrave + future browser-driven scrapers:
+# playwright>=1.40
+
+# (FamilySearch and WikiTree collectors use urllib from the stdlib.)

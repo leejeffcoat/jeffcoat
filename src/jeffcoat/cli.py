@@ -1,0 +1,166 @@
+"""Command-line entry point: python -m jeffcoat <command>.
+
+Commands:
+  init                    create data/tree.db
+  import-seed <file>      load a JSON seed (from-scratch tree)
+  add-person ...          add one person
+  list                    list everyone in the tree
+  queue                   show people with missing facts (research to-do)
+  search-news <name>      Chronicling America newspaper search (no key)
+  search-wikitree <name>  WikiTree public-profile search (no key)
+  export-gedcom <file>    write a .ged for Gramps/RootsMagic
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+from . import collectors, gedcom, research_queue, seed_loader
+from .db import DEFAULT_DB, connect, init_db, next_xref
+from .models import Person
+
+
+def _cmd_init(args) -> int:
+    path = init_db(args.db)
+    print(f"initialized {path}")
+    return 0
+
+
+def _cmd_import_seed(args) -> int:
+    init_db(args.db)
+    with connect(args.db) as conn:
+        ref_map = seed_loader.load(conn, args.file)
+    print(f"loaded {len(ref_map)} people from {args.file}")
+    return 0
+
+
+def _cmd_add_person(args) -> int:
+    with connect(args.db) as conn:
+        pid = next_xref(conn, "person", "I")
+        conn.execute(
+            "INSERT INTO person (id, given, surname, suffix, sex, notes) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (pid, args.given, args.surname, args.suffix, args.sex, args.notes or ""),
+        )
+        conn.commit()
+    print(f"added {pid}: {args.given} {args.surname} {args.suffix}".strip())
+    return 0
+
+
+def _cmd_list(args) -> int:
+    with connect(args.db) as conn:
+        rows = conn.execute("SELECT * FROM person ORDER BY id").fetchall()
+    if not rows:
+        print("(no people yet — run import-seed or add-person)")
+        return 0
+    for r in rows:
+        suffix = f" {r['suffix']}" if r["suffix"] else ""
+        print(f"  {r['id']:<5} {r['given']} {r['surname']}{suffix}  [{r['sex']}]")
+    print(f"\n{len(rows)} people")
+    return 0
+
+
+def _cmd_queue(args) -> int:
+    with connect(args.db) as conn:
+        items = research_queue.open_items(conn)
+    if not items:
+        print("nothing to research — everyone has birth, death, and parents")
+        return 0
+    print("research to-do:")
+    for it in items:
+        print(f"  {it['id']:<5} {it['name']:<28} {', '.join(it['gaps'])}")
+    return 0
+
+
+def _cmd_search(collector_name: str, args) -> int:
+    person = Person(id="search", given=_first(args.name), surname=_last(args.name))
+    col = collectors.get(collector_name)
+    kwargs = {}
+    if getattr(args, "place", None):
+        kwargs["place"] = args.place
+    try:
+        col.check_requirements()
+        findings = col.search(person, **kwargs)
+    except (RuntimeError, NotImplementedError) as e:
+        print(f"[{collector_name}] {e}", file=sys.stderr)
+        return 1
+    if not findings:
+        print(f"[{collector_name}] no results for {args.name}")
+        return 0
+    for i, f in enumerate(findings, 1):
+        print(f"\n{i}. {f.title}")
+        if f.date or f.place:
+            print(f"   {f.date}  {f.place}".rstrip())
+        if f.summary:
+            print(f"   {f.summary}")
+        if f.url:
+            print(f"   {f.url}")
+    return 0
+
+
+def _cmd_export(args) -> int:
+    with connect(args.db) as conn:
+        out = gedcom.export(conn, args.file)
+    print(f"exported GEDCOM -> {out}")
+    print("open it in Gramps (free) or RootsMagic to view the tree")
+    return 0
+
+
+def _first(name: str) -> str:
+    parts = name.split()
+    return " ".join(parts[:-1]) if len(parts) > 1 else name
+
+
+def _last(name: str) -> str:
+    parts = name.split()
+    return parts[-1] if len(parts) > 1 else ""
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="jeffcoat", description="personal genealogy tool")
+    p.add_argument("--db", default=str(DEFAULT_DB), help=f"SQLite path (default {DEFAULT_DB})")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    sub.add_parser("init", help="create the database").set_defaults(func=_cmd_init)
+
+    sp = sub.add_parser("import-seed", help="load a JSON seed file")
+    sp.add_argument("file")
+    sp.set_defaults(func=_cmd_import_seed)
+
+    sp = sub.add_parser("add-person", help="add one person")
+    sp.add_argument("--given", required=True)
+    sp.add_argument("--surname", default="")
+    sp.add_argument("--suffix", default="")
+    sp.add_argument("--sex", default="U", choices=["M", "F", "U"])
+    sp.add_argument("--notes", default="")
+    sp.set_defaults(func=_cmd_add_person)
+
+    sub.add_parser("list", help="list everyone").set_defaults(func=_cmd_list)
+    sub.add_parser("queue", help="show research to-do").set_defaults(func=_cmd_queue)
+
+    sp = sub.add_parser("search-news", help="Chronicling America (no key)")
+    sp.add_argument("name")
+    sp.add_argument("--place", default="", help="US state name, e.g. 'South Carolina'")
+    sp.set_defaults(func=lambda a: _cmd_search("chronicling_america", a))
+
+    sp = sub.add_parser("search-wikitree", help="WikiTree public profiles (no key)")
+    sp.add_argument("name")
+    sp.set_defaults(func=lambda a: _cmd_search("wikitree", a))
+
+    sp = sub.add_parser("export-gedcom", help="write a .ged for Gramps/RootsMagic")
+    sp.add_argument("file")
+    sp.set_defaults(func=_cmd_export)
+
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
