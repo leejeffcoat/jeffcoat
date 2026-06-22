@@ -12,15 +12,13 @@ API docs: https://www.loc.gov/apis/json-and-yaml/
 
 from __future__ import annotations
 
-import json
 import urllib.parse
-import urllib.request
 
 from ..models import Person
 from .base import Collector, Finding
+from .http_util import get_json
 
 BASE_URL = "https://www.loc.gov/collections/chronicling-america/"
-USER_AGENT = "jeffcoat-genealogy/0.1 (personal research)"
 
 
 class ChroniclingAmericaCollector(Collector):
@@ -38,9 +36,7 @@ class ChroniclingAmericaCollector(Collector):
         if place:
             params.append(("fa", f"location:{place.lower()}"))
         url = BASE_URL + "?" + urllib.parse.urlencode(params)
-        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+        data = get_json(url)
 
         findings: list[Finding] = []
         for item in (data.get("results") or [])[:rows]:

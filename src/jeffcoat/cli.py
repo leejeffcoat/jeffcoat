@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import urllib.error
 from pathlib import Path
 
 from . import collectors, gedcom, research_queue, seed_loader, tree_ops
@@ -86,6 +87,13 @@ def _cmd_search(collector_name: str, args) -> int:
     except (RuntimeError, NotImplementedError) as e:
         print(f"[{collector_name}] {e}", file=sys.stderr)
         return 1
+    except urllib.error.HTTPError as e:
+        hint = " (rate limited — wait a minute and retry)" if e.code == 429 else ""
+        print(f"[{collector_name}] HTTP {e.code}{hint}", file=sys.stderr)
+        return 1
+    except urllib.error.URLError as e:
+        print(f"[{collector_name}] network error: {e.reason}", file=sys.stderr)
+        return 1
     if not findings:
         print(f"[{collector_name}] no results for {args.name}")
         return 0
@@ -123,6 +131,13 @@ def _cmd_attach(collector_name: str, args) -> int:
             findings = col.search(search_person, **kwargs)
         except (RuntimeError, NotImplementedError) as e:
             print(f"[{collector_name}] {e}", file=sys.stderr)
+            return 1
+        except urllib.error.HTTPError as e:
+            hint = " (rate limited — wait a minute and retry)" if e.code == 429 else ""
+            print(f"[{collector_name}] HTTP {e.code}{hint}", file=sys.stderr)
+            return 1
+        except urllib.error.URLError as e:
+            print(f"[{collector_name}] network error: {e.reason}", file=sys.stderr)
             return 1
         if not findings:
             print(f"[{collector_name}] no results for {name}")

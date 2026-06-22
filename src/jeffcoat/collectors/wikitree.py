@@ -10,15 +10,13 @@ API docs: https://github.com/wikitree/wikitree-api
 
 from __future__ import annotations
 
-import json
 import urllib.parse
-import urllib.request
 
 from ..models import Person
 from .base import Collector, Finding
+from .http_util import get_json
 
 API_URL = "https://api.wikitree.com/api.php"
-USER_AGENT = "jeffcoat-genealogy/0.1 (personal research)"
 
 
 class WikiTreeCollector(Collector):
@@ -26,12 +24,7 @@ class WikiTreeCollector(Collector):
     requires = ()
 
     def search(self, person: Person, birth_year: str = "", rows: int = 5, **kwargs) -> list[Finding]:
-        # WikiTree's open endpoint searches by name fields.
-        params = {
-            "action": "getProfile",
-            "key": "",  # filled per-result below; here we use the search action instead
-        }
-        # Use the searchPerson action (public).
+        # WikiTree's public searchPerson action matches on name fields.
         params = {
             "action": "searchPerson",
             "FirstName": person.given,
@@ -43,9 +36,7 @@ class WikiTreeCollector(Collector):
         if birth_year:
             params["BirthDate"] = birth_year
         url = API_URL + "?" + urllib.parse.urlencode(params)
-        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            payload = json.loads(resp.read().decode("utf-8"))
+        payload = get_json(url)
 
         findings: list[Finding] = []
         # searchPerson returns a list; shape is [{"matches":[...]}] or similar.
