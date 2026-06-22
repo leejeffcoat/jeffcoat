@@ -22,13 +22,30 @@ the heavy tree-viewing is delegated to Gramps via GEDCOM round-trip.
 ## Quick start
 
 ```bash
-# from the repo root
+# from the repo root  (set PYTHONPATH=src first; PowerShell: $env:PYTHONPATH="src")
 python -m jeffcoat init                       # create data/tree.db
-python -m jeffcoat add-person --given "John" --surname "Jeffcoat" --sex M
-python -m jeffcoat list
-python -m jeffcoat search-news "John Jeffcoat" --place Georgia   # Chronicling America (no key)
-python -m jeffcoat export-gedcom data/tree.ged                   # open this in Gramps
+python -m jeffcoat import-seed data/seed-mine.json
+python -m jeffcoat list                       # everyone, with ids
+python -m jeffcoat show I7                     # one person + events + sources
+python -m jeffcoat queue                       # who's missing birth/death/parents
+python -m jeffcoat export-gedcom data/tree.ged # open this in Gramps
 ```
+
+### The research loop (search → verify → attach)
+
+Search a source, eyeball the results, and attach the one *you* judge to be a
+real match. The attach writes the fact **with its citation and a confidence
+level** so unverified hits are always marked as such.
+
+```bash
+python -m jeffcoat search-news "Roy Jeffcoat" --place "South Carolina"   # no key
+python -m jeffcoat attach-news I7 3 --type DEAT --place "South Carolina"  # attach result #3 as a death
+python -m jeffcoat search-wikitree "Roy Jeffcoat"                          # no key
+python -m jeffcoat attach-wikitree I7 1                                    # attach profile #1 (BIRT)
+```
+
+You decide what attaches — the tool never auto-merges ambiguous common-name
+hits into the tree.
 
 No third-party packages are required for the core (SQLite + GEDCOM + the no-auth
 collectors). Scraper collectors that need extra packages declare them at the top of
@@ -52,7 +69,9 @@ src/jeffcoat/
   db.py                 SQLite schema + connection
   models.py             Person / Event / Family / Source / Citation dataclasses
   gedcom.py             GEDCOM 5.5.1 exporter
-  research_queue.py     "find more about person X" work queue
+  seed_loader.py        load a from-scratch tree from a JSON seed
+  tree_ops.py           attach a Finding as sourced fact; render a person
+  research_queue.py     "who needs research" work queue
   cli.py                command-line entry point (python -m jeffcoat)
   collectors/
     base.py             Collector interface + Finding result type

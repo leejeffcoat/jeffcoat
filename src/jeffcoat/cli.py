@@ -17,7 +17,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from . import collectors, gedcom, research_queue, seed_loader
+from . import collectors, gedcom, research_queue, seed_loader, tree_ops
 from .db import DEFAULT_DB, connect, init_db, next_xref
 from .models import Person
 
@@ -100,6 +100,44 @@ def _cmd_search(collector_name: str, args) -> int:
     return 0
 
 
+def _cmd_show(args) -> int:
+    with connect(args.db) as conn:
+        print(tree_ops.render_person(conn, args.person_id))
+    return 0
+
+
+def _cmd_attach(collector_name: str, args) -> int:
+    with connect(args.db) as conn:
+        person = tree_ops.get_person(conn, args.person_id)
+        if person is None:
+            print(f"no person {args.person_id}", file=sys.stderr)
+            return 1
+        name = f"{person['given']} {person['surname']}".strip()
+        search_person = Person(id=person["id"], given=person["given"], surname=person["surname"])
+        col = collectors.get(collector_name)
+        kwargs = {}
+        if getattr(args, "place", None):
+            kwargs["place"] = args.place
+        try:
+            col.check_requirements()
+            findings = col.search(search_person, **kwargs)
+        except (RuntimeError, NotImplementedError) as e:
+            print(f"[{collector_name}] {e}", file=sys.stderr)
+            return 1
+        if not findings:
+            print(f"[{collector_name}] no results for {name}")
+            return 1
+        if args.result < 1 or args.result > len(findings):
+            print(f"result #{args.result} out of range (1..{len(findings)})", file=sys.stderr)
+            return 1
+        finding = findings[args.result - 1]
+        event_type = args.type or finding.event_type or "EVEN"
+        source_id, event_id = tree_ops.attach_finding(conn, args.person_id, finding, event_type)
+        print(f"attached to {args.person_id}: {event_type} <- {finding.title}")
+        print(f"  source {source_id}, citation [{finding.confidence}]")
+    return 0
+
+
 def _cmd_export(args) -> int:
     with connect(args.db) as conn:
         out = gedcom.export(conn, args.file)
@@ -139,6 +177,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("list", help="list everyone").set_defaults(func=_cmd_list)
     sub.add_parser("queue", help="show research to-do").set_defaults(func=_cmd_queue)
+
+    sp = sub.add_parser("show", help="show one person with events + sources")
+    sp.add_argument("person_id")
+    sp.set_defaults(func=_cmd_show)
+
+    sp = sub.add_parser("attach-news", help="attach a Chronicling America result to a person")
+    sp.add_argument("person_id")
+    sp.add_argument("result", type=int, help="result number from search-news (1-based)")
+    sp.add_argument("--type", default="", help="GEDCOM event tag (DEAT, MARR, RESI...)")
+    sp.add_argument("--place", default="", help="US state to scope the search")
+    sp.set_defaults(func=lambda a: _cmd_attach("chronicling_america", a))
+
+    sp = sub.add_parser("attach-wikitree", help="attach a WikiTree result to a person")
+    sp.add_argument("person_id")
+    sp.add_argument("result", type=int, help="result number from search-wikitree (1-based)")
+    sp.add_argument("--type", default="", help="GEDCOM event tag (default BIRT from profile)")
+    sp.set_defaults(func=lambda a: _cmd_attach("wikitree", a))
 
     sp = sub.add_parser("search-news", help="Chronicling America (no key)")
     sp.add_argument("name")
