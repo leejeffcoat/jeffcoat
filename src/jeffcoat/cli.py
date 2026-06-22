@@ -210,6 +210,13 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--type", default="", help="GEDCOM event tag (default BIRT from profile)")
     sp.set_defaults(func=lambda a: _cmd_attach("wikitree", a))
 
+    sp = sub.add_parser("attach-graves", help="attach a FindAGrave memorial to a person")
+    sp.add_argument("person_id")
+    sp.add_argument("result", type=int, help="result number from search-graves (1-based)")
+    sp.add_argument("--type", default="", help="GEDCOM event tag (default BURI)")
+    sp.add_argument("--place", default="", help="location filter used in the search")
+    sp.set_defaults(func=lambda a: _cmd_attach("findagrave", a))
+
     sp = sub.add_parser("search-news", help="Chronicling America (no key)")
     sp.add_argument("name")
     sp.add_argument("--place", default="", help="US state name, e.g. 'South Carolina'")
@@ -219,6 +226,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("name")
     sp.set_defaults(func=lambda a: _cmd_search("wikitree", a))
 
+    sp = sub.add_parser("search-graves", help="FindAGrave memorials (no key)")
+    sp.add_argument("name")
+    sp.add_argument("--place", default="", help="location filter, e.g. 'South Carolina'")
+    sp.set_defaults(func=lambda a: _cmd_search("findagrave", a))
+
     sp = sub.add_parser("export-gedcom", help="write a .ged for Gramps/RootsMagic")
     sp.add_argument("file")
     sp.set_defaults(func=_cmd_export)
@@ -227,6 +239,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Ensure non-ASCII place names / OCR snippets print on the Windows cp1252 console.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
     parser = build_parser()
     args = parser.parse_args(argv)
     return args.func(args)
