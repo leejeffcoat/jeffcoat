@@ -91,8 +91,10 @@ _DEATH_RE = re.compile(r'id="deathDateLabel"[^>]*itemprop="deathDate"[^>]*>\s*([
 _CEMNAME_RE = re.compile(r'href="/cemetery/\d+/[^"]*"[^>]*>\s*(?:<[^>]+>\s*)*([^<]+?)\s*<', re.S)
 _RELBLOCK_RE = re.compile(
     r'<b id="\w+Label" class="label-relation">([^<]+)</b>(.*?)</ul>', re.S)
+# Capture the whole name node up to </h3>; it may contain an <i>maiden</i> tag,
+# which _clean() flattens (so "Ina Letha <i>Livingston</i> Poole" survives).
 _RELMEMBER_RE = re.compile(
-    r'href="/memorial/(\d+)/[^"]+"[^>]*>.*?itemprop="name">\s*([^<]+?)\s*</', re.S)
+    r'href="/memorial/(\d+)/[^"]+"[\s\S]*?itemprop="name">([\s\S]*?)</h3>', re.S)
 
 
 def fetch_memorial(mem_id: str | int) -> dict:
