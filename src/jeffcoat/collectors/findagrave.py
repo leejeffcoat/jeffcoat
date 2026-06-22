@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import html as html_lib
 import re
+import time
 import urllib.parse
 
 from ..models import Person
@@ -79,6 +80,57 @@ class FindAGraveCollector(Collector):
             if len(findings) >= rows:
                 break
         return findings
+
+
+MEMORIAL_URL = "https://www.findagrave.com/memorial/{id}"
+
+_H1_RE = re.compile(r'<h1[^>]*itemprop="name"[^>]*>(.*?)</h1>', re.S)
+# Anchor on the main person's label id; family-member cards use id="family*".
+_BIRTH_RE = re.compile(r'id="birthDateLabel"[^>]*itemprop="birthDate"[^>]*>\s*([^<]+?)\s*<')
+_DEATH_RE = re.compile(r'id="deathDateLabel"[^>]*itemprop="deathDate"[^>]*>\s*([^<]+?)\s*<')
+_CEMNAME_RE = re.compile(r'href="/cemetery/\d+/[^"]*"[^>]*>\s*(?:<[^>]+>\s*)*([^<]+?)\s*<', re.S)
+_RELBLOCK_RE = re.compile(
+    r'<b id="\w+Label" class="label-relation">([^<]+)</b>(.*?)</ul>', re.S)
+_RELMEMBER_RE = re.compile(
+    r'href="/memorial/(\d+)/[^"]+"[^>]*>.*?itemprop="name">\s*([^<]+?)\s*</', re.S)
+
+
+def fetch_memorial(mem_id: str | int) -> dict:
+    """Fetch one FindAGrave memorial detail page and return structured data:
+
+    {id, name, birth, death, cemetery, url,
+     relations: {Parents: [(id,name)], Spouse: [...], Children: [...], Siblings: [...]}}
+    Dates are GEDCOM-formatted. Read-only; one HTTP request.
+    """
+    url = MEMORIAL_URL.format(id=mem_id)
+    # FindAGrave can return a short stub for rapid successive requests; retry.
+    doc = get_html(url, use_curl=True, courtesy_delay=1.2)
+    raw_name = _first(_H1_RE, doc)
+    if not raw_name:
+        time.sleep(3)
+        doc = get_html(url, use_curl=True, courtesy_delay=1.2)
+        raw_name = _first(_H1_RE, doc)
+
+    # the h1 carries a veteran badge (<b ...>) after the name — cut it off first
+    name = _clean(raw_name.split("<b", 1)[0])
+    birth = _gedcom_date(_clean(_first(_BIRTH_RE, doc)))
+    death = _gedcom_date(_clean(_first(_DEATH_RE, doc)))
+    cemetery = _clean(_first(_CEMNAME_RE, doc))
+
+    relations: dict[str, list[tuple[str, str]]] = {}
+    for rel, seg in _RELBLOCK_RE.findall(doc):
+        members = [(mid, _clean(nm)) for mid, nm in _RELMEMBER_RE.findall(seg)]
+        if members:
+            relations[rel.strip()] = members
+    return {
+        "id": str(mem_id),
+        "name": name,
+        "birth": birth,
+        "death": death,
+        "cemetery": cemetery,
+        "url": url,
+        "relations": relations,
+    }
 
 
 def _first(rx: re.Pattern, text: str) -> str:

@@ -87,7 +87,7 @@ def _get_via_curl(url: str, user_agent: str, courtesy_delay: float, timeout: int
         )
     time.sleep(courtesy_delay)
     proc = subprocess.run(
-        [curl, "-s", "--compressed", "-A", user_agent,
+        [curl, "-s", "-L", "--compressed", "-A", user_agent,
          "-H", "Accept-Language: en-US,en;q=0.9", "--max-time", str(timeout), url],
         capture_output=True,  # bytes; decode UTF-8 ourselves (avoids cp1252 on Windows)
     )

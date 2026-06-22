@@ -47,6 +47,23 @@ python -m jeffcoat attach-wikitree I7 1                                    # att
 You decide what attaches — the tool never auto-merges ambiguous common-name
 hits into the tree.
 
+### Walking a grave branch (FindAGrave family links)
+
+FindAGrave memorials link Parents / Spouse / Children / Siblings. Once you've
+found a confirmed ancestor's memorial, walk the tree upward automatically:
+
+```bash
+python -m jeffcoat graves-memorial 148336340           # one memorial + its family links
+python -m jeffcoat graves-walk 148336340 --up 7        # climb 7 generations of ancestors
+python -m jeffcoat graves-walk 148336340 --up 3 --emit-seed > /tmp/branch.json
+```
+
+`graves-walk` follows Parents up `--up` generations and pulls each person's
+spouse so couples are complete (and the spouse's own ancestors get walked too).
+It is **read-only** — `--emit-seed` prints a seed-format JSON fragment you review
+and merge into your own seed file by hand. The seed file stays the source of
+truth; the walk never edits the tree directly.
+
 No third-party packages are required for the core (SQLite + GEDCOM + the no-auth
 collectors). Scraper collectors that need extra packages declare them at the top of
 their file and fail with a clear message if missing.

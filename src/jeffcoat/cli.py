@@ -18,7 +18,8 @@ import sys
 import urllib.error
 from pathlib import Path
 
-from . import collectors, gedcom, research_queue, seed_loader, tree_ops
+from . import collectors, gedcom, graves_walk, research_queue, seed_loader, tree_ops
+from .collectors.findagrave import fetch_memorial
 from .db import DEFAULT_DB, connect, init_db, next_xref
 from .models import Person
 
@@ -153,6 +154,37 @@ def _cmd_attach(collector_name: str, args) -> int:
     return 0
 
 
+def _cmd_graves_memorial(args) -> int:
+    try:
+        d = fetch_memorial(args.memorial_id)
+    except (RuntimeError, urllib.error.URLError) as e:
+        print(f"[findagrave] {e}", file=sys.stderr)
+        return 1
+    print(f"{d['name']}  (b. {d['birth'] or '?'}  d. {d['death'] or '?'})")
+    if d["cemetery"]:
+        print(f"  buried: {d['cemetery']}")
+    print(f"  {d['url']}")
+    for rel, members in d["relations"].items():
+        print(f"  {rel}:")
+        for mid, name in members:
+            print(f"    - {name}  [mem {mid}]")
+    return 0
+
+
+def _cmd_graves_walk(args) -> int:
+    try:
+        result = graves_walk.walk_ancestors(args.memorial_id, max_up=args.up, max_fetch=args.max)
+    except (RuntimeError, urllib.error.URLError) as e:
+        print(f"[findagrave] {e}", file=sys.stderr)
+        return 1
+    print(f"walked {len(result['people'])} memorials, up to {args.up} generations\n")
+    if args.emit_seed:
+        print(graves_walk.to_seed_fragment(result))
+    else:
+        print(graves_walk.render(result, args.memorial_id))
+    return 0
+
+
 def _cmd_export(args) -> int:
     with connect(args.db) as conn:
         out = gedcom.export(conn, args.file)
@@ -216,6 +248,18 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--type", default="", help="GEDCOM event tag (default BURI)")
     sp.add_argument("--place", default="", help="location filter used in the search")
     sp.set_defaults(func=lambda a: _cmd_attach("findagrave", a))
+
+    sp = sub.add_parser("graves-memorial", help="show one FindAGrave memorial + its family links")
+    sp.add_argument("memorial_id", help="FindAGrave memorial number")
+    sp.set_defaults(func=_cmd_graves_memorial)
+
+    sp = sub.add_parser("graves-walk", help="walk FindAGrave ancestors up from a memorial")
+    sp.add_argument("memorial_id", help="FindAGrave memorial number to start from")
+    sp.add_argument("--up", type=int, default=3, help="generations to climb (default 3)")
+    sp.add_argument("--max", type=int, default=40, help="max memorials to fetch (default 40)")
+    sp.add_argument("--emit-seed", action="store_true",
+                    help="output a seed JSON fragment to review/merge instead of a tree")
+    sp.set_defaults(func=_cmd_graves_walk)
 
     sp = sub.add_parser("search-news", help="Chronicling America (no key)")
     sp.add_argument("name")
